@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>翻譯對照校對工具 (增強版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+        }
+        .file-input-label {
+            display: block;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            border: 2px dashed #9CA3AF;
+            background-color: #F9FAFB;
+            color: #4B5563;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            text-align: center;
+        }
+        .file-input-label:hover {
+            border-color: #3B82F6;
+            background-color: #EFF6FF;
+        }
+        .file-input-label.has-file {
+            border-color: #16A34A;
+            background-color: #F0FDF4;
+            color: #15803D;
+            border-style: solid;
+        }
+        .file-input {
+            display: none;
+        }
+        /* Style for highlighted search results */
+        mark {
+            background-color: #FDE047; /* yellow-300 */
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+        /* Added styles for new features */
+        .diff-highlight {
+            background-color: #FEE2E2;
+            border-left: 3px solid #EF4444;
+            padding-left: 8px;
+        }
+        .similarity-high { background-color: #DCFCE7; }
+        .similarity-medium { background-color: #FEF3C7; }
+        .similarity-low { background-color: #FEE2E2; }
+        .progress-bar {
+            transition: width 0.3s ease-in-out;
+        }
+        .entry-number {
+            min-width: 2rem;
+            text-align: center;
+        }
+        /* Dark mode styles */
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #111827; }
+            .bg-white { background-color: #1F2937 !important; }
+            .text-gray-800 { color: #F9FAFB !important; }
+            .text-gray-600 { color: #D1D5DB !important; }
+            .text-gray-700 { color: #E5E7EB !important; }
+            .border-gray-300 { border-color: #4B5563 !important; }
+            .bg-gray-50 { background-color: #374151 !important; }
+            .bg-gray-100 { background-color: #111827 !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8">
+        
+        <div class="text-center mb-6">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">翻譯對照校對工具</h1>
+            <p class="mt-2 text-gray-600">快速對齊原文、機翻與官方翻譯，提升校對效率。</p>
+        </div>
+
+        <!-- Added progress bar -->
+        <div id="progress-container" class="hidden mb-6">
+            <div class="bg-gray-200 rounded-full h-2">
+                <div id="progress-bar" class="bg-blue-600 h-2 rounded-full progress-bar" style="width: 0%"></div>
+            </div>
+            <p id="progress-text" class="text-sm text-gray-600 mt-1 text-center"></p>
+        </div>
+
+        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-md mb-6">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-blue-700">
+                        請分別上傳兩個 UTF-8 編碼的純文字 (.txt) 檔案。系統會自動解析並對齊，請確保兩個檔案的有效翻譯句數能夠對應。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+                <h3 class="font-semibold text-gray-700 mb-2 text-center">1. 官方翻譯檔 (中文)</h3>
+                <label for="official-file" id="official-file-label" class="file-input-label">
+                    <span id="official-file-name">點擊選擇檔案</span>
+                </label>
+                <input type="file" id="official-file" class="file-input" accept=".txt">
+            </div>
+            <div>
+                <h3 class="font-semibold text-gray-700 mb-2 text-center">2. 機翻+原文檔 (混合)</h3>
+                <label for="mixed-file" id="mixed-file-label" class="file-input-label">
+                    <span id="mixed-file-name">點擊選擇檔案</span>
+                </label>
+                <input type="file" id="mixed-file" class="file-input" accept=".txt">
+            </div>
+        </div>
+
+        <div class="text-center mb-6">
+            <button id="process-btn" class="w-full md:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-200 shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">
+                開始對照
+            </button>
+        </div>
+        
+        <div id="status-message" class="text-center font-medium my-4"></div>
+
+        <div id="results-container" class="hidden">
+            <div class="flex flex-col lg:flex-row justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-bold text-gray-800">對照結果</h2>
+                
+                <!-- Enhanced control panel -->
+                <div class="flex flex-col md:flex-row gap-3 items-center w-full lg:w-auto">
+                    <div class="relative w-full md:w-64">
+                        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                            <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                            </svg>
+                        </div>
+                        <input type="search" id="search-input" placeholder="在結果中搜尋..." class="w-full p-2.5 pl-10 text-sm text-gray-900 border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <select id="filter-select" class="p-2 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="all">顯示全部</option>
+                            <option value="differences">僅顯示差異</option>
+                            <option value="similarities">僅顯示相似</option>
+                        </select>
+                        
+                        <button id="stats-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-4 focus:ring-purple-300 transition-all duration-200 shadow-md">
+                            統計
+                        </button>
+                        
+                        <button id="download-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300 transition-all duration-200 shadow-md">
+                            下載
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Added statistics panel -->
+            <div id="stats-panel" class="hidden bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                <h3 class="font-semibold text-gray-700 mb-3">翻譯統計分析</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div class="bg-white p-3 rounded-lg shadow-sm">
+                        <div class="text-2xl font-bold text-blue-600" id="total-entries">0</div>
+                        <div class="text-sm text-gray-600">總條目數</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg shadow-sm">
+                        <div class="text-2xl font-bold text-green-600" id="high-similarity">0</div>
+                        <div class="text-sm text-gray-600">高相似度</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg shadow-sm">
+                        <div class="text-2xl font-bold text-yellow-600" id="medium-similarity">0</div>
+                        <div class="text-sm text-gray-600">中等相似度</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg shadow-sm">
+                        <div class="text-2xl font-bold text-red-600" id="low-similarity">0</div>
+                        <div class="text-sm text-gray-600">低相似度</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="output-container" class="w-full h-96 p-4 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm overflow-y-auto space-y-4">
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // DOM element references
+        const officialFileInput = document.getElementById('official-file');
+        const mixedFileInput = document.getElementById('mixed-file');
+        const officialFileLabel = document.getElementById('official-file-label');
+        const mixedFileLabel = document.getElementById('mixed-file-label');
+        const officialFileName = document.getElementById('official-file-name');
+        const mixedFileName = document.getElementById('mixed-file-name');
+        const processBtn = document.getElementById('process-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const outputContainer = document.getElementById('output-container');
+        const statusMessage = document.getElementById('status-message');
+        const searchInput = document.getElementById('search-input');
+        
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const filterSelect = document.getElementById('filter-select');
+        const statsBtn = document.getElementById('stats-btn');
+        const statsPanel = document.getElementById('stats-panel');
+
+        // Store parsed lines globally for download and search
+        let originalLines = [], machineLines = [], officialLines = [];
+        let processedEntries = []; // Store processed entries with metadata
+
+        function calculateSimilarity(str1, str2) {
+            if (!str1 || !str2) return 0;
+            
+            const len1 = str1.length;
+            const len2 = str2.length;
+            const matrix = Array(len2 + 1).fill().map(() => Array(len1 + 1).fill(0));
+            
+            for (let i = 0; i <= len1; i++) matrix[0][i] = i;
+            for (let j = 0; j <= len2; j++) matrix[j][0] = j;
+            
+            for (let j = 1; j <= len2; j++) {
+                for (let i = 1; i <= len1; i++) {
+                    if (str1[i - 1] === str2[j - 1]) {
+                        matrix[j][i] = matrix[j - 1][i - 1];
+                    } else {
+                        matrix[j][i] = Math.min(
+                            matrix[j - 1][i] + 1,
+                            matrix[j][i - 1] + 1,
+                            matrix[j - 1][i - 1] + 1
+                        );
+                    }
+                }
+            }
+            
+            const maxLen = Math.max(len1, len2);
+            return maxLen === 0 ? 1 : (maxLen - matrix[len2][len1]) / maxLen;
+        }
+
+        function updateProgress(current, total, message) {
+            const percentage = Math.round((current / total) * 100);
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${message} (${current}/${total})`;
+        }
+
+        // Update UI when a file is selected
+        function setupFileInput(input, label, nameSpan) {
+            input.addEventListener('change', () => {
+                if (input.files.length > 0) {
+                    nameSpan.textContent = input.files[0].name;
+                    label.classList.add('has-file');
+                } else {
+                    nameSpan.textContent = '點擊選擇檔案';
+                    label.classList.remove('has-file');
+                }
+            });
+        }
+
+        setupFileInput(officialFileInput, officialFileLabel, officialFileName);
+        setupFileInput(mixedFileInput, mixedFileLabel, mixedFileName);
+
+        // Function to read a file as text
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                if (!file) {
+                    reject(new Error("未選擇檔案。"));
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = event => resolve(event.target.result);
+                reader.onerror = error => reject(error);
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+        
+        // Function to create a tag element
+        function createTag(text, color) {
+            const tag = document.createElement('span');
+            tag.textContent = text;
+            tag.className = `font-sans font-semibold px-2 py-1 text-xs rounded mr-2 ${color}`;
+            return tag;
+        }
+
+        function renderResults() {
+            outputContainer.innerHTML = '';
+            processedEntries = []; // Reset processed entries
+            const minLength = Math.min(originalLines.length, machineLines.length, officialLines.length);
+
+            if (minLength === 0) {
+                throw new Error("處理後檔案內容為空或格式不符，無法進行對照。");
+            }
+            
+            progressContainer.classList.remove('hidden');
+            
+            for (let i = 0; i < minLength; i++) {
+                updateProgress(i + 1, minLength, '分析相似度');
+                
+                const entryDiv = document.createElement('div');
+                entryDiv.className = 'result-entry p-4 border border-gray-200 rounded-lg bg-white shadow-sm';
+
+                const oLine = originalLines[i] || '';
+                const mLine = machineLines[i] || '';
+                const fLine = officialLines[i] || '';
+
+                // Calculate similarity between machine translation and official translation
+                const similarity = calculateSimilarity(mLine, fLine);
+                let similarityClass = 'similarity-low';
+                let similarityLabel = '低相似度';
+                
+                if (similarity > 0.8) {
+                    similarityClass = 'similarity-high';
+                    similarityLabel = '高相似度';
+                } else if (similarity > 0.5) {
+                    similarityClass = 'similarity-medium';
+                    similarityLabel = '中等相似度';
+                }
+
+                // Add entry number and similarity indicator
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'flex justify-between items-center mb-3 pb-2 border-b border-gray-100';
+                
+                const entryNumber = document.createElement('span');
+                entryNumber.className = 'entry-number bg-gray-100 text-gray-700 px-2 py-1 rounded text-sm font-mono';
+                entryNumber.textContent = `#${i + 1}`;
+                
+                const similarityBadge = document.createElement('span');
+                similarityBadge.className = `px-2 py-1 rounded text-xs font-semibold ${similarityClass}`;
+                similarityBadge.textContent = `${similarityLabel} (${Math.round(similarity * 100)}%)`;
+                
+                headerDiv.appendChild(entryNumber);
+                headerDiv.appendChild(similarityBadge);
+                entryDiv.appendChild(headerDiv);
+
+                const pOriginal = document.createElement('p');
+                pOriginal.className = 'mb-2';
+                pOriginal.appendChild(createTag('原文', 'bg-gray-200 text-gray-800'));
+                pOriginal.append(oLine);
+
+                const pMachine = document.createElement('p');
+                pMachine.className = 'mb-2';
+                pMachine.appendChild(createTag('機翻', 'bg-yellow-100 text-yellow-800'));
+                pMachine.append(mLine);
+                
+                const pOfficial = document.createElement('p');
+                pOfficial.className = 'mb-0';
+                pOfficial.appendChild(createTag('官方', 'bg-green-100 text-green-800'));
+                pOfficial.append(fLine);
+                
+                entryDiv.appendChild(pOriginal);
+                entryDiv.appendChild(pMachine);
+                entryDiv.appendChild(pOfficial);
+                
+                // Store entry metadata
+                processedEntries.push({
+                    index: i,
+                    original: oLine,
+                    machine: mLine,
+                    official: fLine,
+                    similarity: similarity,
+                    element: entryDiv
+                });
+                
+                outputContainer.appendChild(entryDiv);
+            }
+
+            progressContainer.classList.add('hidden');
+            resultsContainer.classList.remove('hidden');
+            updateStatistics();
+
+            // If lengths were different, show a non-critical warning message.
+            if (originalLines.length !== machineLines.length || originalLines.length !== officialLines.length) {
+                statusMessage.textContent = `注意：檔案有效行數不匹配，已依據最短的檔案（${minLength}行）產生對照結果。 (原文: ${originalLines.length}, 機翻: ${machineLines.length}, 官方: ${officialLines.length})`;
+                statusMessage.className = 'text-center text-yellow-600 font-medium my-4';
+            }
+        }
+
+        function updateStatistics() {
+            const total = processedEntries.length;
+            const high = processedEntries.filter(entry => entry.similarity > 0.8).length;
+            const medium = processedEntries.filter(entry => entry.similarity > 0.5 && entry.similarity <= 0.8).length;
+            const low = processedEntries.filter(entry => entry.similarity <= 0.5).length;
+            
+            document.getElementById('total-entries').textContent = total;
+            document.getElementById('high-similarity').textContent = high;
+            document.getElementById('medium-similarity').textContent = medium;
+            document.getElementById('low-similarity').textContent = low;
+        }
+
+        // Main processing logic
+        processBtn.addEventListener('click', async () => {
+            statusMessage.textContent = '';
+            resultsContainer.classList.add('hidden');
+            processBtn.disabled = true;
+            processBtn.textContent = '處理中...';
+            
+            try {
+                const files = [officialFileInput.files[0], mixedFileInput.files[0]];
+                if (files.some(f => !f)) throw new Error("請務必上傳兩個檔案。");
+
+                const [officialText, mixedText] = await Promise.all(files.map(readFileAsText));
+                
+                const officialLinesRaw = officialText.split(/\r?\n/).filter(line => line.trim() !== '');
+                const mixedLinesRaw = mixedText.split(/\r?\n/).filter(line => line.trim() !== '');
+                
+                // Reset arrays
+                originalLines = [];
+                machineLines = [];
+                officialLines = officialLinesRaw;
+
+                for (let i = 0; i < mixedLinesRaw.length; i++) {
+                    if (i % 2 === 0) machineLines.push(mixedLinesRaw[i].trim());
+                    else originalLines.push(mixedLinesRaw[i].trim());
+                }
+
+                renderResults();
+
+            } catch (error) {
+                statusMessage.textContent = `錯誤：${error.message}`;
+                statusMessage.className = 'text-center text-red-600 font-medium my-4';
+            } finally {
+                processBtn.disabled = false;
+                processBtn.textContent = '開始對照';
+            }
+        });
+
+        function applyFilters() {
+            const query = searchInput.value.trim().toLowerCase();
+            const filter = filterSelect.value;
+            const regex = query ? new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi') : null;
+
+            processedEntries.forEach(entry => {
+                const element = entry.element;
+                const textContent = element.textContent.toLowerCase();
+                let shouldShow = true;
+
+                // Apply text filter
+                if (query && !textContent.includes(query)) {
+                    shouldShow = false;
+                }
+
+                // Apply similarity filter
+                if (shouldShow && filter !== 'all') {
+                    if (filter === 'differences' && entry.similarity > 0.5) {
+                        shouldShow = false;
+                    } else if (filter === 'similarities' && entry.similarity <= 0.5) {
+                        shouldShow = false;
+                    }
+                }
+
+                if (shouldShow) {
+                    element.style.display = 'block';
+                    
+                    // Apply highlighting
+                    if (regex) {
+                        const paragraphs = element.querySelectorAll('p');
+                        paragraphs.forEach(p => {
+                            const tag = p.querySelector('span').outerHTML;
+                            const textNode = p.childNodes[1];
+                            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                                const newText = textNode.textContent.replace(regex, `<mark>$1</mark>`);
+                                p.innerHTML = tag + newText;
+                            }
+                        });
+                    }
+                } else {
+                    element.style.display = 'none';
+                }
+            });
+        }
+
+        searchInput.addEventListener('input', applyFilters);
+        filterSelect.addEventListener('change', applyFilters);
+
+        statsBtn.addEventListener('click', () => {
+            statsPanel.classList.toggle('hidden');
+        });
+
+        // Download functionality
+        downloadBtn.addEventListener('click', () => {
+            let textToSave = '';
+            const minLength = Math.min(originalLines.length, machineLines.length, officialLines.length);
+
+            for (let i = 0; i < minLength; i++) {
+                const similarity = processedEntries[i] ? Math.round(processedEntries[i].similarity * 100) : 0;
+                textToSave += `=== 條目 #${i + 1} (相似度: ${similarity}%) ===\n`;
+                textToSave += `【原文】${originalLines[i] || ''}\n`;
+                textToSave += `【機翻】${machineLines[i] || ''}\n`;
+                textToSave += `【官方】${officialLines[i] || ''}\n\n`;
+            }
+
+            const blob = new Blob([textToSave.trim()], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `translation_comparison_${new Date().toISOString().slice(0, 10)}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        });
+
+    </script>
+</body>
+</html>
