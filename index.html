@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翻譯對照校對工具 (增強版 v2)</title>
+    <title>翻譯對照校對工具 (增強版 v3)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -338,26 +338,42 @@
 
         function highlightGlossaryTerms(text, textType) {
             if (!text || glossary.length === 0) return document.createTextNode(text);
+            
+            const fragment = document.createDocumentFragment();
+            let lastIndex = 0;
 
-            const sortedGlossary = [...glossary].sort((a, b) => b.original.length - a.original.length || b.translation.length - a.translation.length);
-            let resultHTML = escapeRegExp(text);
-
-            sortedGlossary.forEach(term => {
-                const originalTerm = escapeRegExp(term.original);
-                const translationTerm = escapeRegExp(term.translation);
-                if (originalTerm && textType === 'original') {
-                    const regex = new RegExp(originalTerm, 'g');
-                    resultHTML = resultHTML.replace(regex, `<span class="glossary-term" title="翻譯: ${term.translation}">${term.original}</span>`);
+            // Create a single regex for all terms to handle overlaps correctly (finds the earliest match)
+            const sortedGlossary = [...glossary].sort((a, b) => (textType === 'original' ? b.original.length - a.original.length : b.translation.length - a.translation.length));
+            const termsToMatch = sortedGlossary.map(term => escapeRegExp(textType === 'original' ? term.original : term.translation)).filter(t => t);
+            if (termsToMatch.length === 0) return document.createTextNode(text);
+            
+            const regex = new RegExp(termsToMatch.join('|'), 'g');
+            
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                // Add text before the match
+                if (match.index > lastIndex) {
+                    fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
                 }
-                if (translationTerm && textType === 'official') {
-                    const regex = new RegExp(translationTerm, 'g');
-                    resultHTML = resultHTML.replace(regex, `<span class="glossary-term" title="原文: ${term.original}">${term.translation}</span>`);
-                }
-            });
+                
+                const matchedTerm = match[0];
+                const termData = sortedGlossary.find(t => (textType === 'original' ? t.original === matchedTerm : t.translation === matchedTerm));
+                
+                const span = document.createElement('span');
+                span.className = 'glossary-term';
+                span.textContent = matchedTerm;
+                span.title = textType === 'original' ? `翻譯: ${termData.translation}` : `原文: ${termData.original}`;
+                fragment.appendChild(span);
+                
+                lastIndex = regex.lastIndex;
+            }
 
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = resultHTML.replace(/&lt;/g, '<').replace(/&gt;/g, '>'); // Decode entities
-            return tempDiv;
+            // Add any remaining text after the last match
+            if (lastIndex < text.length) {
+                fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+            }
+
+            return fragment;
         }
         
         function renderResults() {
@@ -568,11 +584,12 @@
                 const pOriginal = entry.element.querySelector('p:nth-of-type(1)');
                 const pOfficial = entry.element.querySelector('p:nth-of-type(3)');
                 
-                const originalTag = pOriginal.querySelector('span').outerHTML;
+                // Clear existing content except for the tag
+                const originalTag = pOriginal.querySelector('span:not(.glossary-term)').outerHTML;
                 pOriginal.innerHTML = originalTag;
                 pOriginal.appendChild(highlightGlossaryTerms(entry.original, 'original'));
 
-                const officialTag = pOfficial.querySelector('span').outerHTML;
+                const officialTag = pOfficial.querySelector('span:not(.glossary-term)').outerHTML;
                 pOfficial.innerHTML = officialTag;
                 pOfficial.appendChild(highlightGlossaryTerms(entry.official, 'official'));
             });
@@ -632,16 +649,31 @@
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
-                    const importedGlossary = JSON.parse(e.target.result);
-                    if (Array.isArray(importedGlossary) && importedGlossary.every(item => 'original' in item && 'translation' in item)) {
-                        glossary = importedGlossary;
-                        glossary.sort((a,b) => a.original.localeCompare(b.original, 'ja'));
-                        renderGlossaryList();
-                        reapplyHighlights();
-                        alert(`成功導入 ${glossary.length} 個術語。`);
-                    } else {
-                        throw new Error('JSON 格式不符。');
+                    const parsedJson = JSON.parse(e.target.result);
+                    let importedGlossary = [];
+
+                    // Case 1: Standard array format [ {original, translation}, ... ]
+                    if (Array.isArray(parsedJson) && parsedJson.every(item => typeof item === 'object' && 'original' in item && 'translation' in item)) {
+                        importedGlossary = parsedJson;
+                    } 
+                    // Case 2: Key-Value object format { original: translation, ... }
+                    else if (typeof parsedJson === 'object' && !Array.isArray(parsedJson) && parsedJson !== null) {
+                        importedGlossary = Object.keys(parsedJson).map(key => ({
+                            original: key.trim(),
+                            translation: parsedJson[key].trim()
+                        }));
+                    } 
+                    // Unrecognized format
+                    else {
+                        throw new Error('JSON 格式不符。請確認檔案為陣列格式 [{"original":"原文", "translation":"翻譯"}, ...] 或物件格式 {"原文":"翻譯", ...}。');
                     }
+
+                    glossary = importedGlossary;
+                    glossary.sort((a,b) => a.original.localeCompare(b.original, 'ja'));
+                    renderGlossaryList();
+                    reapplyHighlights();
+                    alert(`成功導入 ${glossary.length} 個術語。`);
+
                 } catch (error) {
                     alert(`導入失敗：${error.message}`);
                 }
