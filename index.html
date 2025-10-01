@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翻譯對照校對工具 (增強版)</title>
+    <title>翻譯對照校對工具 (增強版 v2)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -34,13 +34,11 @@
         .file-input {
             display: none;
         }
-        /* Style for highlighted search results */
         mark {
             background-color: #FDE047; /* yellow-300 */
             padding: 0 2px;
             border-radius: 2px;
         }
-        /* Added styles for new features */
         .diff-highlight {
             background-color: #FEE2E2;
             border-left: 3px solid #EF4444;
@@ -56,6 +54,25 @@
             min-width: 2rem;
             text-align: center;
         }
+        /* New Glossary Styles */
+        .glossary-term {
+            background-color: #EBF4FF; /* A light blue */
+            border-bottom: 2px solid #90CDF4; /* A slightly darker blue */
+            cursor: help;
+            position: relative;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
         /* Dark mode styles */
         @media (prefers-color-scheme: dark) {
             body { background-color: #111827; }
@@ -66,6 +83,10 @@
             .border-gray-300 { border-color: #4B5563 !important; }
             .bg-gray-50 { background-color: #374151 !important; }
             .bg-gray-100 { background-color: #111827 !important; }
+            .glossary-term {
+                background-color: #2D3748; /* Darker blue */
+                border-bottom-color: #4A5568;
+            }
         }
     </style>
 </head>
@@ -77,7 +98,6 @@
             <p class="mt-2 text-gray-600">快速對齊原文、機翻與官方翻譯，提升校對效率。</p>
         </div>
 
-        <!-- Added progress bar -->
         <div id="progress-container" class="hidden mb-6">
             <div class="bg-gray-200 rounded-full h-2">
                 <div id="progress-bar" class="bg-blue-600 h-2 rounded-full progress-bar" style="width: 0%"></div>
@@ -129,7 +149,6 @@
             <div class="flex flex-col lg:flex-row justify-between items-center mb-4 gap-4">
                 <h2 class="text-xl font-bold text-gray-800">對照結果</h2>
                 
-                <!-- Enhanced control panel -->
                 <div class="flex flex-col md:flex-row gap-3 items-center w-full lg:w-auto">
                     <div class="relative w-full md:w-64">
                         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -147,6 +166,10 @@
                             <option value="similarities">僅顯示相似</option>
                         </select>
                         
+                        <button id="glossary-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 transition-all duration-200 shadow-md">
+                            術語表
+                        </button>
+
                         <button id="stats-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-4 focus:ring-purple-300 transition-all duration-200 shadow-md">
                             統計
                         </button>
@@ -158,7 +181,6 @@
                 </div>
             </div>
 
-            <!-- Added statistics panel -->
             <div id="stats-panel" class="hidden bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                 <h3 class="font-semibold text-gray-700 mb-3">翻譯統計分析</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
@@ -184,8 +206,34 @@
             <div id="output-container" class="w-full h-96 p-4 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm overflow-y-auto space-y-4">
             </div>
         </div>
-
     </div>
+
+    <div id="glossary-modal" class="modal-overlay hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h3 class="text-lg font-bold text-gray-800">術語表管理</h3>
+                <button id="close-glossary-btn" class="text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="p-4 space-y-4 overflow-y-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border rounded-lg bg-gray-50">
+                    <input type="text" id="glossary-original-input" placeholder="原文 (日文)" class="p-2 border rounded w-full">
+                    <input type="text" id="glossary-translation-input" placeholder="官方翻譯 (中文)" class="p-2 border rounded w-full">
+                    <button id="add-glossary-term-btn" class="md:col-span-2 w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">新增術語</button>
+                </div>
+                <div class="flex flex-col md:flex-row gap-3">
+                    <input type="search" id="glossary-search-input" placeholder="搜尋術語表..." class="p-2 border rounded w-full">
+                    <div class="flex gap-2">
+                         <button id="import-glossary-btn" class="w-full md:w-auto bg-gray-500 text-white p-2 px-4 rounded hover:bg-gray-600">導入</button>
+                         <button id="export-glossary-btn" class="w-full md:w-auto bg-gray-500 text-white p-2 px-4 rounded hover:bg-gray-600">導出</button>
+                    </div>
+                    <input type="file" id="glossary-file-input" class="hidden" accept=".json">
+                </div>
+                <div id="glossary-list" class="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+                    </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // DOM element references
@@ -201,7 +249,6 @@
         const outputContainer = document.getElementById('output-container');
         const statusMessage = document.getElementById('status-message');
         const searchInput = document.getElementById('search-input');
-        
         const progressContainer = document.getElementById('progress-container');
         const progressBar = document.getElementById('progress-bar');
         const progressText = document.getElementById('progress-text');
@@ -209,34 +256,41 @@
         const statsBtn = document.getElementById('stats-btn');
         const statsPanel = document.getElementById('stats-panel');
 
-        // Store parsed lines globally for download and search
+        // Glossary DOM references
+        const glossaryBtn = document.getElementById('glossary-btn');
+        const glossaryModal = document.getElementById('glossary-modal');
+        const closeGlossaryBtn = document.getElementById('close-glossary-btn');
+        const addGlossaryTermBtn = document.getElementById('add-glossary-term-btn');
+        const glossaryOriginalInput = document.getElementById('glossary-original-input');
+        const glossaryTranslationInput = document.getElementById('glossary-translation-input');
+        const glossaryList = document.getElementById('glossary-list');
+        const glossarySearchInput = document.getElementById('glossary-search-input');
+        const importGlossaryBtn = document.getElementById('import-glossary-btn');
+        const exportGlossaryBtn = document.getElementById('export-glossary-btn');
+        const glossaryFileInput = document.getElementById('glossary-file-input');
+
+        // Global State
         let originalLines = [], machineLines = [], officialLines = [];
-        let processedEntries = []; // Store processed entries with metadata
+        let processedEntries = [];
+        let glossary = []; // { original: '...', translation: '...' }
 
         function calculateSimilarity(str1, str2) {
             if (!str1 || !str2) return 0;
-            
             const len1 = str1.length;
             const len2 = str2.length;
             const matrix = Array(len2 + 1).fill().map(() => Array(len1 + 1).fill(0));
-            
             for (let i = 0; i <= len1; i++) matrix[0][i] = i;
             for (let j = 0; j <= len2; j++) matrix[j][0] = j;
-            
             for (let j = 1; j <= len2; j++) {
                 for (let i = 1; i <= len1; i++) {
-                    if (str1[i - 1] === str2[j - 1]) {
-                        matrix[j][i] = matrix[j - 1][i - 1];
-                    } else {
-                        matrix[j][i] = Math.min(
-                            matrix[j - 1][i] + 1,
-                            matrix[j][i - 1] + 1,
-                            matrix[j - 1][i - 1] + 1
-                        );
-                    }
+                    const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+                    matrix[j][i] = Math.min(
+                        matrix[j - 1][i] + 1,
+                        matrix[j][i - 1] + 1,
+                        matrix[j - 1][i - 1] + cost
+                    );
                 }
             }
-            
             const maxLen = Math.max(len1, len2);
             return maxLen === 0 ? 1 : (maxLen - matrix[len2][len1]) / maxLen;
         }
@@ -247,7 +301,6 @@
             progressText.textContent = `${message} (${current}/${total})`;
         }
 
-        // Update UI when a file is selected
         function setupFileInput(input, label, nameSpan) {
             input.addEventListener('change', () => {
                 if (input.files.length > 0) {
@@ -259,17 +312,12 @@
                 }
             });
         }
-
         setupFileInput(officialFileInput, officialFileLabel, officialFileName);
         setupFileInput(mixedFileInput, mixedFileLabel, mixedFileName);
 
-        // Function to read a file as text
         function readFileAsText(file) {
             return new Promise((resolve, reject) => {
-                if (!file) {
-                    reject(new Error("未選擇檔案。"));
-                    return;
-                }
+                if (!file) return reject(new Error("未選擇檔案。"));
                 const reader = new FileReader();
                 reader.onload = event => resolve(event.target.result);
                 reader.onerror = error => reject(error);
@@ -277,7 +325,6 @@
             });
         }
         
-        // Function to create a tag element
         function createTag(text, color) {
             const tag = document.createElement('span');
             tag.textContent = text;
@@ -285,9 +332,37 @@
             return tag;
         }
 
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function highlightGlossaryTerms(text, textType) {
+            if (!text || glossary.length === 0) return document.createTextNode(text);
+
+            const sortedGlossary = [...glossary].sort((a, b) => b.original.length - a.original.length || b.translation.length - a.translation.length);
+            let resultHTML = escapeRegExp(text);
+
+            sortedGlossary.forEach(term => {
+                const originalTerm = escapeRegExp(term.original);
+                const translationTerm = escapeRegExp(term.translation);
+                if (originalTerm && textType === 'original') {
+                    const regex = new RegExp(originalTerm, 'g');
+                    resultHTML = resultHTML.replace(regex, `<span class="glossary-term" title="翻譯: ${term.translation}">${term.original}</span>`);
+                }
+                if (translationTerm && textType === 'official') {
+                    const regex = new RegExp(translationTerm, 'g');
+                    resultHTML = resultHTML.replace(regex, `<span class="glossary-term" title="原文: ${term.original}">${term.translation}</span>`);
+                }
+            });
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = resultHTML.replace(/&lt;/g, '<').replace(/&gt;/g, '>'); // Decode entities
+            return tempDiv;
+        }
+        
         function renderResults() {
             outputContainer.innerHTML = '';
-            processedEntries = []; // Reset processed entries
+            processedEntries = [];
             const minLength = Math.min(originalLines.length, machineLines.length, officialLines.length);
 
             if (minLength === 0) {
@@ -306,11 +381,8 @@
                 const mLine = machineLines[i] || '';
                 const fLine = officialLines[i] || '';
 
-                // Calculate similarity between machine translation and official translation
                 const similarity = calculateSimilarity(mLine, fLine);
-                let similarityClass = 'similarity-low';
-                let similarityLabel = '低相似度';
-                
+                let similarityClass = 'similarity-low', similarityLabel = '低相似度';
                 if (similarity > 0.8) {
                     similarityClass = 'similarity-high';
                     similarityLabel = '高相似度';
@@ -319,7 +391,6 @@
                     similarityLabel = '中等相似度';
                 }
 
-                // Add entry number and similarity indicator
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'flex justify-between items-center mb-3 pb-2 border-b border-gray-100';
                 
@@ -338,7 +409,7 @@
                 const pOriginal = document.createElement('p');
                 pOriginal.className = 'mb-2';
                 pOriginal.appendChild(createTag('原文', 'bg-gray-200 text-gray-800'));
-                pOriginal.append(oLine);
+                pOriginal.appendChild(highlightGlossaryTerms(oLine, 'original'));
 
                 const pMachine = document.createElement('p');
                 pMachine.className = 'mb-2';
@@ -348,20 +419,15 @@
                 const pOfficial = document.createElement('p');
                 pOfficial.className = 'mb-0';
                 pOfficial.appendChild(createTag('官方', 'bg-green-100 text-green-800'));
-                pOfficial.append(fLine);
+                pOfficial.appendChild(highlightGlossaryTerms(fLine, 'official'));
                 
                 entryDiv.appendChild(pOriginal);
                 entryDiv.appendChild(pMachine);
                 entryDiv.appendChild(pOfficial);
                 
-                // Store entry metadata
                 processedEntries.push({
-                    index: i,
-                    original: oLine,
-                    machine: mLine,
-                    official: fLine,
-                    similarity: similarity,
-                    element: entryDiv
+                    index: i, original: oLine, machine: mLine, official: fLine,
+                    similarity: similarity, element: entryDiv
                 });
                 
                 outputContainer.appendChild(entryDiv);
@@ -371,7 +437,6 @@
             resultsContainer.classList.remove('hidden');
             updateStatistics();
 
-            // If lengths were different, show a non-critical warning message.
             if (originalLines.length !== machineLines.length || originalLines.length !== officialLines.length) {
                 statusMessage.textContent = `注意：檔案有效行數不匹配，已依據最短的檔案（${minLength}行）產生對照結果。 (原文: ${originalLines.length}, 機翻: ${machineLines.length}, 官方: ${officialLines.length})`;
                 statusMessage.className = 'text-center text-yellow-600 font-medium my-4';
@@ -380,44 +445,34 @@
 
         function updateStatistics() {
             const total = processedEntries.length;
-            const high = processedEntries.filter(entry => entry.similarity > 0.8).length;
-            const medium = processedEntries.filter(entry => entry.similarity > 0.5 && entry.similarity <= 0.8).length;
-            const low = processedEntries.filter(entry => entry.similarity <= 0.5).length;
-            
+            const high = processedEntries.filter(e => e.similarity > 0.8).length;
+            const medium = processedEntries.filter(e => e.similarity > 0.5 && e.similarity <= 0.8).length;
+            const low = processedEntries.filter(e => e.similarity <= 0.5).length;
             document.getElementById('total-entries').textContent = total;
             document.getElementById('high-similarity').textContent = high;
             document.getElementById('medium-similarity').textContent = medium;
             document.getElementById('low-similarity').textContent = low;
         }
 
-        // Main processing logic
         processBtn.addEventListener('click', async () => {
             statusMessage.textContent = '';
             resultsContainer.classList.add('hidden');
             processBtn.disabled = true;
             processBtn.textContent = '處理中...';
-            
             try {
                 const files = [officialFileInput.files[0], mixedFileInput.files[0]];
                 if (files.some(f => !f)) throw new Error("請務必上傳兩個檔案。");
-
                 const [officialText, mixedText] = await Promise.all(files.map(readFileAsText));
-                
                 const officialLinesRaw = officialText.split(/\r?\n/).filter(line => line.trim() !== '');
                 const mixedLinesRaw = mixedText.split(/\r?\n/).filter(line => line.trim() !== '');
-                
-                // Reset arrays
                 originalLines = [];
                 machineLines = [];
                 officialLines = officialLinesRaw;
-
                 for (let i = 0; i < mixedLinesRaw.length; i++) {
                     if (i % 2 === 0) machineLines.push(mixedLinesRaw[i].trim());
                     else originalLines.push(mixedLinesRaw[i].trim());
                 }
-
                 renderResults();
-
             } catch (error) {
                 statusMessage.textContent = `錯誤：${error.message}`;
                 statusMessage.className = 'text-center text-red-600 font-medium my-4';
@@ -431,59 +486,37 @@
             const query = searchInput.value.trim().toLowerCase();
             const filter = filterSelect.value;
             const regex = query ? new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi') : null;
-
             processedEntries.forEach(entry => {
                 const element = entry.element;
                 const textContent = element.textContent.toLowerCase();
                 let shouldShow = true;
-
-                // Apply text filter
                 if (query && !textContent.includes(query)) {
                     shouldShow = false;
                 }
-
-                // Apply similarity filter
                 if (shouldShow && filter !== 'all') {
-                    if (filter === 'differences' && entry.similarity > 0.5) {
-                        shouldShow = false;
-                    } else if (filter === 'similarities' && entry.similarity <= 0.5) {
-                        shouldShow = false;
-                    }
+                    if (filter === 'differences' && entry.similarity > 0.8) shouldShow = false;
+                    else if (filter === 'similarities' && entry.similarity <= 0.5) shouldShow = false;
                 }
-
-                if (shouldShow) {
-                    element.style.display = 'block';
-                    
-                    // Apply highlighting
-                    if (regex) {
-                        const paragraphs = element.querySelectorAll('p');
-                        paragraphs.forEach(p => {
-                            const tag = p.querySelector('span').outerHTML;
-                            const textNode = p.childNodes[1];
-                            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
-                                const newText = textNode.textContent.replace(regex, `<mark>$1</mark>`);
-                                p.innerHTML = tag + newText;
-                            }
-                        });
-                    }
-                } else {
-                    element.style.display = 'none';
+                element.style.display = shouldShow ? 'block' : 'none';
+                if (shouldShow && regex) {
+                    element.querySelectorAll('p').forEach(p => {
+                        const tag = p.querySelector('span:not(.glossary-term)').outerHTML;
+                        const contentNode = p.childNodes[1];
+                        if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
+                            p.innerHTML = tag + contentNode.textContent.replace(regex, `<mark>$1</mark>`);
+                        }
+                    });
                 }
             });
         }
-
         searchInput.addEventListener('input', applyFilters);
         filterSelect.addEventListener('change', applyFilters);
 
-        statsBtn.addEventListener('click', () => {
-            statsPanel.classList.toggle('hidden');
-        });
+        statsBtn.addEventListener('click', () => statsPanel.classList.toggle('hidden'));
 
-        // Download functionality
         downloadBtn.addEventListener('click', () => {
             let textToSave = '';
             const minLength = Math.min(originalLines.length, machineLines.length, officialLines.length);
-
             for (let i = 0; i < minLength; i++) {
                 const similarity = processedEntries[i] ? Math.round(processedEntries[i].similarity * 100) : 0;
                 textToSave += `=== 條目 #${i + 1} (相似度: ${similarity}%) ===\n`;
@@ -491,17 +524,130 @@
                 textToSave += `【機翻】${machineLines[i] || ''}\n`;
                 textToSave += `【官方】${officialLines[i] || ''}\n\n`;
             }
-
             const blob = new Blob([textToSave.trim()], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.style.display = 'none';
             a.href = url;
             a.download = `translation_comparison_${new Date().toISOString().slice(0, 10)}.txt`;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
+            URL.revokeObjectURL(url);
             document.body.removeChild(a);
+        });
+
+        // --- Glossary Logic ---
+        function renderGlossaryList() {
+            glossaryList.innerHTML = '';
+            const query = glossarySearchInput.value.trim().toLowerCase();
+            const filteredGlossary = glossary.filter(term => 
+                term.original.toLowerCase().includes(query) || term.translation.toLowerCase().includes(query)
+            );
+
+            if (filteredGlossary.length === 0) {
+                glossaryList.innerHTML = `<p class="text-gray-500 text-center p-2">術語表為空或無符合搜尋的結果。</p>`;
+                return;
+            }
+
+            filteredGlossary.forEach((term, index) => {
+                const item = document.createElement('div');
+                item.className = 'flex justify-between items-center p-2 bg-white rounded border';
+                item.innerHTML = `
+                    <div class="flex-1 mr-2">
+                        <p class="font-semibold text-sm text-gray-700">${term.original}</p>
+                        <p class="text-xs text-gray-500">${term.translation}</p>
+                    </div>
+                    <button data-original="${term.original}" class="delete-term-btn text-red-500 hover:text-red-700 font-bold">&times;</button>
+                `;
+                glossaryList.appendChild(item);
+            });
+        }
+
+        function reapplyHighlights() {
+            if (processedEntries.length === 0) return;
+            processedEntries.forEach(entry => {
+                const pOriginal = entry.element.querySelector('p:nth-of-type(1)');
+                const pOfficial = entry.element.querySelector('p:nth-of-type(3)');
+                
+                const originalTag = pOriginal.querySelector('span').outerHTML;
+                pOriginal.innerHTML = originalTag;
+                pOriginal.appendChild(highlightGlossaryTerms(entry.original, 'original'));
+
+                const officialTag = pOfficial.querySelector('span').outerHTML;
+                pOfficial.innerHTML = officialTag;
+                pOfficial.appendChild(highlightGlossaryTerms(entry.official, 'official'));
+            });
+        }
+
+        glossaryBtn.addEventListener('click', () => {
+            glossaryModal.classList.remove('hidden');
+            renderGlossaryList();
+        });
+        closeGlossaryBtn.addEventListener('click', () => glossaryModal.classList.add('hidden'));
+
+        addGlossaryTermBtn.addEventListener('click', () => {
+            const original = glossaryOriginalInput.value.trim();
+            const translation = glossaryTranslationInput.value.trim();
+            if (original && translation && !glossary.some(t => t.original === original)) {
+                glossary.push({ original, translation });
+                glossary.sort((a,b) => a.original.localeCompare(b.original, 'ja')); // Sort Japanese
+                glossaryOriginalInput.value = '';
+                glossaryTranslationInput.value = '';
+                renderGlossaryList();
+                reapplyHighlights();
+            }
+        });
+
+        glossaryList.addEventListener('click', e => {
+            if (e.target.classList.contains('delete-term-btn')) {
+                const originalToDelete = e.target.dataset.original;
+                glossary = glossary.filter(term => term.original !== originalToDelete);
+                renderGlossaryList();
+                reapplyHighlights();
+            }
+        });
+
+        glossarySearchInput.addEventListener('input', renderGlossaryList);
+
+        exportGlossaryBtn.addEventListener('click', () => {
+            if (glossary.length === 0) {
+                alert('術語表為空，無法導出。');
+                return;
+            }
+            const blob = new Blob([JSON.stringify(glossary, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `glossary_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        });
+
+        importGlossaryBtn.addEventListener('click', () => glossaryFileInput.click());
+
+        glossaryFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedGlossary = JSON.parse(e.target.result);
+                    if (Array.isArray(importedGlossary) && importedGlossary.every(item => 'original' in item && 'translation' in item)) {
+                        glossary = importedGlossary;
+                        glossary.sort((a,b) => a.original.localeCompare(b.original, 'ja'));
+                        renderGlossaryList();
+                        reapplyHighlights();
+                        alert(`成功導入 ${glossary.length} 個術語。`);
+                    } else {
+                        throw new Error('JSON 格式不符。');
+                    }
+                } catch (error) {
+                    alert(`導入失敗：${error.message}`);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = null; // Reset file input
         });
 
     </script>
