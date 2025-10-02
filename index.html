@@ -132,7 +132,7 @@
                 <input type="file" id="official-file" class="file-input" accept=".txt">
             </div>
             <div>
-                <h3 class="font-semibold text-gray-700 mb-2 text-center">2. 機翻+原文檔 (混合)</h3>
+                <h3 class="font-semibold text-gray-700 mb-2 text-center">2. 原文檔 (可含機翻)</h3>
                 <label for="mixed-file" id="mixed-file-label" class="file-input-label">
                     <span id="mixed-file-name">點擊選擇檔案</span>
                 </label>
@@ -276,6 +276,13 @@
         let originalLines = [], machineLines = [], officialLines = [];
         let processedEntries = [];
         let glossary = []; // { original: '...', translation: '...' }
+        
+        // Helper function to detect Japanese text (containing Hiragana/Katakana)
+        function isJapanese(text) {
+            if (!text) return false;
+            // This regex checks for Hiragana or Katakana characters.
+            return /[\u3040-\u309F\u30A0-\u30FF]/.test(text);
+        }
 
         function calculateSimilarity(str1, str2) {
             if (!str1 || !str2) return 0;
@@ -382,7 +389,8 @@
         function renderResults() {
             outputContainer.innerHTML = '';
             processedEntries = [];
-            const minLength = Math.min(originalLines.length, machineLines.length, officialLines.length);
+            // Use a combined length check to handle different file lengths gracefully
+            const minLength = Math.min(originalLines.length, officialLines.length);
 
             if (minLength === 0) {
                 throw new Error("處理後檔案內容為空或格式不符，無法進行對照。");
@@ -397,10 +405,11 @@
                 entryDiv.className = 'result-entry p-4 border border-gray-200 rounded-lg bg-white shadow-sm';
 
                 const oLine = originalLines[i] || '';
-                const mLine = machineLines[i] || '';
+                const mLine = machineLines[i] || ''; // Will be '' in original-only mode
                 const fLine = officialLines[i] || '';
 
-                const similarity = calculateSimilarity(mLine, fLine);
+                // If machine line is empty, compare original to official directly for similarity score.
+                const similarity = calculateSimilarity(mLine || oLine, fLine);
                 let similarityClass = 'similarity-low', similarityLabel = '低相似度';
                 if (similarity > 0.8) {
                     similarityClass = 'similarity-high';
@@ -430,18 +439,22 @@
                 pOriginal.appendChild(createTag('原文', 'bg-gray-200 text-gray-800'));
                 pOriginal.appendChild(highlightGlossaryTerms(oLine, 'original'));
 
-                const pMachine = document.createElement('p');
-                pMachine.className = 'mb-2';
-                pMachine.appendChild(createTag('機翻', 'bg-yellow-100 text-yellow-800'));
-                pMachine.append(mLine);
+                entryDiv.appendChild(pOriginal);
+
+                // **MODIFICATION**: Only show the machine translation line if it has content
+                if (mLine) {
+                    const pMachine = document.createElement('p');
+                    pMachine.className = 'mb-2';
+                    pMachine.appendChild(createTag('機翻', 'bg-yellow-100 text-yellow-800'));
+                    pMachine.append(mLine);
+                    entryDiv.appendChild(pMachine);
+                }
                 
                 const pOfficial = document.createElement('p');
                 pOfficial.className = 'mb-0';
                 pOfficial.appendChild(createTag('官方', 'bg-green-100 text-green-800'));
                 pOfficial.appendChild(highlightGlossaryTerms(fLine, 'official'));
                 
-                entryDiv.appendChild(pOriginal);
-                entryDiv.appendChild(pMachine);
                 entryDiv.appendChild(pOfficial);
                 
                 processedEntries.push({
@@ -456,8 +469,8 @@
             resultsContainer.classList.remove('hidden');
             updateStatistics();
 
-            if (originalLines.length !== machineLines.length || originalLines.length !== officialLines.length) {
-                statusMessage.textContent = `注意：檔案有效行數不匹配，已依據最短的檔案（${minLength}行）產生對照結果。 (原文: ${originalLines.length}, 機翻: ${machineLines.length}, 官方: ${officialLines.length})`;
+            if (originalLines.length !== officialLines.length) {
+                statusMessage.textContent = `注意：檔案有效行數不匹配，已依據最短的檔案（${minLength}行）產生對照結果。 (原文: ${originalLines.length}, 官方: ${officialLines.length})`;
                 statusMessage.className = 'text-center text-yellow-600 font-medium my-4';
             }
         }
@@ -482,15 +495,34 @@
                 const files = [officialFileInput.files[0], mixedFileInput.files[0]];
                 if (files.some(f => !f)) throw new Error("請務必上傳兩個檔案。");
                 const [officialText, mixedText] = await Promise.all(files.map(readFileAsText));
+                
                 const officialLinesRaw = officialText.split(/\r?\n/).filter(line => line.trim() !== '');
                 const mixedLinesRaw = mixedText.split(/\r?\n/).filter(line => line.trim() !== '');
+                
                 originalLines = [];
                 machineLines = [];
                 officialLines = officialLinesRaw;
-                for (let i = 0; i < mixedLinesRaw.length; i++) {
-                    if (i % 2 === 0) machineLines.push(mixedLinesRaw[i].trim());
-                    else originalLines.push(mixedLinesRaw[i].trim());
+
+                // **MODIFICATION**: Auto-detect the format of the second file
+                if (mixedLinesRaw.length > 0 && isJapanese(mixedLinesRaw[0])) {
+                    // Case 1: The file seems to be "Original Only"
+                    statusMessage.textContent = '檢測到第二個檔案為純原文格式，將直接與官方翻譯進行對照。';
+                    statusMessage.className = 'text-center text-blue-600 font-medium my-4';
+                    
+                    originalLines = mixedLinesRaw.map(line => line.trim());
+                    // Fill machineLines with empty strings to maintain data structure
+                    machineLines = Array(originalLines.length).fill('');
+                } else {
+                    // Case 2: The file is the original "Machine Translation + Original" format
+                    for (let i = 0; i < mixedLinesRaw.length; i++) {
+                        if (i % 2 === 0) {
+                            machineLines.push(mixedLinesRaw[i].trim());
+                        } else {
+                            originalLines.push(mixedLinesRaw[i].trim());
+                        }
+                    }
                 }
+
                 renderResults();
             } catch (error) {
                 statusMessage.textContent = `錯誤：${error.message}`;
@@ -540,7 +572,10 @@
                 const similarity = processedEntries[i] ? Math.round(processedEntries[i].similarity * 100) : 0;
                 textToSave += `=== 條目 #${i + 1} (相似度: ${similarity}%) ===\n`;
                 textToSave += `【原文】${originalLines[i] || ''}\n`;
-                textToSave += `【機翻】${machineLines[i] || ''}\n`;
+                // Only include machine translation if it exists
+                if (machineLines[i]) {
+                    textToSave += `【機翻】${machineLines[i]}\n`;
+                }
                 textToSave += `【官方】${officialLines[i] || ''}\n\n`;
             }
             const blob = new Blob([textToSave.trim()], { type: 'text/plain;charset=utf-8' });
@@ -585,7 +620,8 @@
             if (processedEntries.length === 0) return;
             processedEntries.forEach(entry => {
                 const pOriginal = entry.element.querySelector('p:nth-of-type(1)');
-                const pOfficial = entry.element.querySelector('p:nth-of-type(3)');
+                // The official translation paragraph might be the second or third element now
+                const pOfficial = Array.from(entry.element.querySelectorAll('p')).pop();
                 
                 // Clear existing content except for the tag
                 const originalTag = pOriginal.querySelector('span:not(.glossary-term)').outerHTML;
